@@ -1,0 +1,23 @@
+# Environment / secrets
+.env
+
+# Vector database (regenerate locally instead of committing)
+db/*
+!db/.gitkeep
+
+# Uploaded source documents (optional — remove this if you want to version them)
+documents/*
+!documents/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# OS / editor cruft
+.DS_Store
+.vscode/
+.idea/
