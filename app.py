@@ -47,9 +47,12 @@ def chat_loop(vector_store) -> None:
         print("\n" + "-" * 60 + "\n")
 
 
-def main() -> None:
-    print_welcome()
+def main()->None:
+    print_welcome();
 
+
+
+  
     if not config.GOOGLE_API_KEY:
         logger.error(
             "GOOGLE_API_KEY is not set.\n"
@@ -57,7 +60,7 @@ def main() -> None:
             "  2. Add your Gemini API key to the .env file\n"
             "  3. Run this program again."
         )
-        sys.exit(1)
+        sys.exit(1);
 
     try:
         vector_store = run_ingestion(force=False)
