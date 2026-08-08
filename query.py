@@ -75,53 +75,113 @@ def retrieve_chunks(vector_store: Chroma, question: str, k: int = config.RETRIEV
         )
     return chunks
 
+def is_relevant(chunks: list[RetrievedChunk]) -> bool:
+    if not chunks:
+        return False
 
-def generate_answer(question: str, vector_store: Chroma, k: int = config.RETRIEVAL_K) -> RagResponse:
+    best_score = max(c.similarity_score for c in chunks)
+
+    return best_score >= config.RETRIEVAL_SCORE_THRESHOLD
+
+def create_llm():
+    return ChatGoogleGenerativeAI(
+    model=config.LLM_MODEL,
+    temperature=config.LLM_TEMPERATURE
+)
+
+
+def generate_answer(
+    question: str,
+    vector_store: Chroma,
+    k: int = config.RETRIEVAL_K
+) -> RagResponse:
     """
     Full retrieve-then-generate pipeline for a single question.
 
     Handles the "no relevant chunks found" case and Gemini API errors
     gracefully, always returning a RagResponse rather than raising.
     """
+    # Reject empty or insufficiently relevant retrieval
     logger.info("Retrieving relevant chunks...")
     retrieved = retrieve_chunks(vector_store, question, k=k)
 
-    if not retrieved:
-        return RagResponse(answer=prompts.NO_ANSWER_MESSAGE, retrieved_chunks=[], is_unanswerable=True)
+    if not is_relevant(retrieved):
+        best_score = (
+            max(c.similarity_score for c in retrieved)
+            if retrieved 
+            else 0.0
+        )
+
+        logger.info(
+            f"No sufficiently relevant chunks found. "
+            f"Best similarity score: {best_score:.3f}"
+        )
+
+        return RagResponse(
+            answer=prompts.NO_ANSWER_MESSAGE,
+            retrieved_chunks=[],
+            is_unanswerable=True
+        )
+    
 
     if config.SHOW_SIMILARITY_SCORES:
         for c in retrieved:
-            logger.info(f"  - {c.source} (Page {c.page}) | similarity: {c.similarity_score:.3f}")
+            logger.info(
+                f"  - {c.source} (Page {c.page}) | "
+                f"similarity: {c.similarity_score:.3f}"
+            )
 
-    context_dicts = [{"text": c.text, "source": c.source, "page": c.page} for c in retrieved]
-    user_prompt = prompts.build_full_prompt(question, context_dicts)
+    context_dicts = [
+        {
+            "text": c.text,
+            "source": c.source,
+            "page": c.page
+        }
+        for c in retrieved
+    ]
+
+    user_prompt = prompts.build_full_prompt(
+        question,
+        context_dicts
+    )
 
     logger.info("Generating response...")
-    llm = ChatGoogleGenerativeAI(model=config.LLM_MODEL, temperature=config.LLM_TEMPERATURE)
+    
+    
+    llm = create_llm()
 
     try:
         response = llm.invoke([
             SystemMessage(content=prompts.SYSTEM_INSTRUCTIONS),
             HumanMessage(content=user_prompt),
         ])
+
         if isinstance(response.content, str):
             answer_text = response.content.strip()
+
         elif isinstance(response.content, list):
             answer_text = "".join(
                 b.get("text", "") if isinstance(b, dict) else str(b)
                 for b in response.content
             ).strip()
+
         else:
             answer_text = str(response.content).strip()
-    except Exception as exc:  # noqa: BLE001 - covers GoogleAPIError and other SDK-level failures
-        logger.error(f"Gemini API error while generating the answer: {exc}")
+
+    except Exception as exc:
+        logger.error(
+            f"Gemini API error while generating the answer: {exc}"
+        )
+
         return RagResponse(
             answer="An error occurred while contacting the Gemini API. Please try again.",
             retrieved_chunks=retrieved,
             is_unanswerable=True,
         )
 
-    is_unanswerable = prompts.NO_ANSWER_MESSAGE.lower() in answer_text.lower()
+    is_unanswerable = (
+        prompts.NO_ANSWER_MESSAGE.lower() in answer_text.lower()
+    )
 
     return RagResponse(
         answer=answer_text,

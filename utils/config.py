@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 # Load variables from a .env file into the process environment, if present.
 load_dotenv()
-
+RETRIEVAL_SCORE_THRESHOLD = 0.5
 # --------------------------------------------------------------------------
 # API / Model settings (Google Gemini)
 # --------------------------------------------------------------------------
